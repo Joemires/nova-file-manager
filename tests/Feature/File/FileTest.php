@@ -17,6 +17,7 @@ use Oneduo\NovaFileManager\Events\FileUnzipping;
 use Oneduo\NovaFileManager\Events\FileUploaded;
 use Oneduo\NovaFileManager\Events\FileUploading;
 use Oneduo\NovaFileManager\NovaFileManager;
+
 use function Pest\Laravel\postJson;
 
 beforeEach(function () {
@@ -123,6 +124,180 @@ it('can prevent folder creation on upload', function () {
                 __('nova-file-manager::errors.authorization.unauthorized', ['action' => 'create folder']),
             ],
         ]);
+});
+
+it('cannot upload a file with an existing file name when the upload_replace_existing is false', function () {
+    Event::fake();
+
+    Nova::$tools = [
+        NovaFileManager::make(),
+    ];
+
+    config()->set('nova-file-manager.upload_replace_existing', false);
+
+    Storage::disk($this->disk)->put($first = 'first.txt', Str::random());
+
+    postJson(
+        uri: route('nova-file-manager.files.upload'),
+        data: [
+            'disk' => $this->disk,
+            'path' => '/',
+            'file' => UploadedFile::fake()->create($first),
+            'resumableFilename' => $first,
+        ],
+    )
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'file' => [
+                __('nova-file-manager::validation.path.exists', ['path' => "/{$first}"]),
+            ],
+        ]);
+
+    Event::assertNotDispatched(
+        event: FileUploaded::class,
+        callback: function (FileUploaded $event) use ($first) {
+            return $event->filesystem === Storage::disk($this->disk)
+                && $event->disk === $this->disk
+                && $event->path === "/{$first}";
+        },
+    );
+});
+
+it('cannot upload a file with an existing file name when the upload_replace_existing is programmatically false', function () {
+    Event::fake();
+
+    Nova::$tools = [
+        NovaFileManager::make()
+            ->uploadReplaceExisting(fn () => false),
+    ];
+
+    config()->set('nova-file-manager.upload_replace_existing', true);
+
+    Storage::disk($this->disk)->put($first = 'first.txt', Str::random());
+
+    postJson(
+        uri: route('nova-file-manager.files.upload'),
+        data: [
+            'disk' => $this->disk,
+            'path' => '/',
+            'file' => UploadedFile::fake()->create($first),
+            'resumableFilename' => $first,
+        ],
+    )
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'file' => [
+                __('nova-file-manager::validation.path.exists', ['path' => "/{$first}"]),
+            ],
+        ]);
+
+    Event::assertNotDispatched(
+        event: FileUploaded::class,
+        callback: function (FileUploaded $event) use ($first) {
+            return $event->filesystem === Storage::disk($this->disk)
+                && $event->disk === $this->disk
+                && $event->path === "/{$first}";
+        },
+    );
+});
+
+it('can upload a file with an existing file name when the upload_replace_existing is true', function () {
+    Event::fake();
+
+    Nova::$tools = [
+        NovaFileManager::make(),
+    ];
+
+    config()->set('nova-file-manager.upload_replace_existing', true);
+
+    Storage::disk($this->disk)->put($first = 'first.txt', 'first');
+
+    postJson(
+        uri: route('nova-file-manager.files.upload'),
+        data: [
+            'disk' => $this->disk,
+            'path' => '/',
+            'file' => UploadedFile::fake()->createWithContent($first, 'second'),
+            'resumableFilename' => $first,
+        ],
+    )
+        ->assertOk()
+        ->assertJson([
+            'message' => __('nova-file-manager::messages.file.upload'),
+        ]);
+
+    Storage::disk($this->disk)->assertExists($first);
+
+    Event::assertDispatched(
+        event: FileUploading::class,
+        callback: function (FileUploading $event) use ($first) {
+            return $event->filesystem === Storage::disk($this->disk)
+                && $event->disk === $this->disk
+                && $event->path === $first;
+        },
+    );
+
+    Event::assertDispatched(
+        event: FileUploaded::class,
+        callback: function (FileUploaded $event) use ($first) {
+            return $event->filesystem === Storage::disk($this->disk)
+                && $event->disk === $this->disk
+                && $event->path === $first;
+        },
+    );
+
+    expect(Storage::disk($this->disk)->get($first))
+        ->toBe('second');
+});
+
+it('can upload a file with an existing file name when the upload_replace_existing is programmatically true', function () {
+    Event::fake();
+
+    Nova::$tools = [
+        NovaFileManager::make()
+            ->uploadReplaceExisting(fn () => true),
+    ];
+
+    config()->set('nova-file-manager.upload_replace_existing', false);
+
+    Storage::disk($this->disk)->put($first = 'first.txt', 'first');
+
+    postJson(
+        uri: route('nova-file-manager.files.upload'),
+        data: [
+            'disk' => $this->disk,
+            'path' => '/',
+            'file' => UploadedFile::fake()->createWithContent($first, 'second'),
+            'resumableFilename' => $first,
+        ],
+    )
+        ->assertOk()
+        ->assertJson([
+            'message' => __('nova-file-manager::messages.file.upload'),
+        ]);
+
+    Storage::disk($this->disk)->assertExists($first);
+
+    Event::assertDispatched(
+        event: FileUploading::class,
+        callback: function (FileUploading $event) use ($first) {
+            return $event->filesystem === Storage::disk($this->disk)
+                && $event->disk === $this->disk
+                && $event->path === $first;
+        },
+    );
+
+    Event::assertDispatched(
+        event: FileUploaded::class,
+        callback: function (FileUploaded $event) use ($first) {
+            return $event->filesystem === Storage::disk($this->disk)
+                && $event->disk === $this->disk
+                && $event->path === $first;
+        },
+    );
+
+    expect(Storage::disk($this->disk)->get($first))
+        ->toBe('second');
 });
 
 it('can rename a file', function () {
@@ -249,11 +424,10 @@ it('cannot rename a file to an existing name', function () {
 it('throws an exception if the filesystem cannot rename the file', function () {
     Event::fake();
 
-    $mock = mock(FileManagerContract::class)->expect(
-        rename: fn (string $from, string $to) => false,
-        filesystem: fn () => Storage::disk($this->disk),
-        getDisk: fn () => $this->disk,
-    );
+    $mock = Mockery::mock(FileManagerContract::class);
+    $mock->shouldReceive('rename')->andReturn(false);
+    $mock->shouldReceive('filesystem')->andReturn(Storage::disk($this->disk));
+    $mock->shouldReceive('getDisk')->andReturn($this->disk);
 
     app()->instance(FileManagerContract::class, $mock);
 
@@ -373,11 +547,10 @@ it('cant delete a non existing file', function () {
 it('throws an exception if the filesystem cannot delete the file', function () {
     Event::fake();
 
-    $mock = mock(FileManagerContract::class)->expect(
-        delete: fn (string $path) => false,
-        filesystem: fn () => Storage::disk($this->disk),
-        getDisk: fn () => $this->disk,
-    );
+    $mock = Mockery::mock(FileManagerContract::class);
+    $mock->shouldReceive('delete')->andReturn(false);
+    $mock->shouldReceive('filesystem')->andReturn(Storage::disk($this->disk));
+    $mock->shouldReceive('getDisk')->andReturn($this->disk);
 
     app()->instance(FileManagerContract::class, $mock);
 
@@ -463,11 +636,10 @@ it('can unzip an archive', function () {
 it('throws an exception if the filesystem cannot unzip the archive', function () {
     Event::fake();
 
-    $mock = mock(FileManagerContract::class)->expect(
-        unzip: fn (string $path) => false,
-        filesystem: fn () => Storage::disk($this->disk),
-        getDisk: fn () => $this->disk,
-    );
+    $mock = Mockery::mock(FileManagerContract::class);
+    $mock->shouldReceive('unzip')->andReturn(false);
+    $mock->shouldReceive('filesystem')->andReturn(Storage::disk($this->disk));
+    $mock->shouldReceive('getDisk')->andReturn($this->disk);
 
     app()->instance(FileManagerContract::class, $mock);
 

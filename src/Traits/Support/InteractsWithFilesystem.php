@@ -24,11 +24,15 @@ trait InteractsWithFilesystem
 
     public ?Closure $canUploadFile = null;
 
+    public ?Closure $uploadReplaceExisting = null;
+
     public ?Closure $canRenameFile = null;
 
     public ?Closure $canDeleteFile = null;
 
     public ?Closure $canUnzipFile = null;
+
+    public ?Closure $canDownloadFile = null;
 
     public ?Closure $showCreateFolder = null;
 
@@ -44,6 +48,8 @@ trait InteractsWithFilesystem
 
     public ?Closure $showUnzipFile = null;
 
+    public ?Closure $showDownloadFile = null;
+
     public ?Closure $showCropImage = null;
 
     public array $uploadRules = [];
@@ -53,6 +59,8 @@ trait InteractsWithFilesystem
     public array $pinturaOptions = [];
 
     public array $cropperOptions = [];
+
+    public ?Closure $pagination = null;
 
     public function filesystem(Closure $callback): static
     {
@@ -171,6 +179,20 @@ trait InteractsWithFilesystem
             : true;
     }
 
+    public function showDownloadFile(Closure $callback): static
+    {
+        $this->showDownloadFile = $callback;
+
+        return $this;
+    }
+
+    public function shouldShowDownloadFile(NovaRequest $request): bool
+    {
+        return is_callable($this->showDownloadFile)
+            ? call_user_func($this->showDownloadFile, $request)
+            : true;
+    }
+
     public function showCropImage(Closure $callback): static
     {
         $this->showCropImage = $callback;
@@ -241,6 +263,20 @@ trait InteractsWithFilesystem
             : $this->shouldShowUploadFile($request);
     }
 
+    public function uploadReplaceExisting(Closure $callback): static
+    {
+        $this->uploadReplaceExisting = $callback;
+
+        return $this;
+    }
+
+    public function resolveUploadReplaceExisting(NovaRequest $request): bool
+    {
+        return is_callable($this->uploadReplaceExisting)
+            ? call_user_func($this->uploadReplaceExisting, $request)
+            : config('nova-file-manager.upload_replace_existing', false);
+    }
+
     public function canRenameFile(Closure $callback): static
     {
         $this->canRenameFile = $callback;
@@ -281,6 +317,20 @@ trait InteractsWithFilesystem
         return is_callable($this->canUnzipFile)
             ? call_user_func($this->canUnzipFile, $request)
             : $this->shouldShowUnzipFile($request);
+    }
+
+    public function canDownloadFile(Closure $callback): static
+    {
+        $this->canDownloadFile = $callback;
+
+        return $this;
+    }
+
+    public function resolveCanDownloadFile(NovaRequest $request): bool
+    {
+        return is_callable($this->canDownloadFile)
+            ? call_user_func($this->canDownloadFile, $request)
+            : $this->shouldShowDownloadFile($request);
     }
 
     public function hasUploadValidator(): bool
@@ -336,6 +386,26 @@ trait InteractsWithFilesystem
         return $this;
     }
 
+    public function pagination(Closure $callback): static
+    {
+        $this->pagination = $callback;
+
+        return $this;
+    }
+
+    public function resolvePagination(NovaRequest $request): array
+    {
+        if (is_callable($this->pagination)) {
+            return call_user_func($this->pagination, $request);
+        }
+
+        return range(
+            config('nova-file-manager.paginate_options.pagination_start'),
+            config('nova-file-manager.paginate_options.pagination_end'),
+            config('nova-file-manager.paginate_options.pagination_step')
+        );
+    }
+
     public function options(): array
     {
         return with(app(NovaRequest::class), function (NovaRequest $request) {
@@ -344,20 +414,22 @@ trait InteractsWithFilesystem
                 'permissions' => [
                     'folder' => [
                         'create' => $this->shouldShowCreateFolder($request),
-                        'rename' => $this->shouldShowRenameFolder($request),
                         'delete' => $this->shouldShowDeleteFolder($request),
+                        'rename' => $this->shouldShowRenameFolder($request),
                     ],
                     'file' => [
-                        'upload' => $this->shouldShowUploadFile($request),
-                        'rename' => $this->shouldShowRenameFile($request),
-                        'edit' => $this->shouldShowCropImage($request),
                         'delete' => $this->shouldShowDeleteFile($request),
+                        'download' => $this->shouldShowDownloadFile($request),
+                        'edit' => $this->shouldShowCropImage($request),
+                        'rename' => $this->shouldShowRenameFile($request),
                         'unzip' => $this->shouldShowUnzipFile($request),
+                        'upload' => $this->shouldShowUploadFile($request),
                     ],
                 ],
                 'usePintura' => config('nova-file-manager.use_pintura'),
                 'pinturaOptions' => $this->pinturaOptions,
                 'cropperOptions' => $this->cropperOptions,
+                'paginationOptions' => $this->resolvePagination($request),
             ];
         });
     }
@@ -369,25 +441,26 @@ trait InteractsWithFilesystem
         }
 
         $map = [
-            'filesystem',
             'canCreateFolder',
-            'canRenameFolder',
-            'canDeleteFolder',
-            'canUploadFile',
-            'canRenameFile',
             'canDeleteFile',
+            'canDeleteFolder',
+            'canRenameFile',
+            'canRenameFolder',
             'canUnzipFile',
-            'showCreateFolder',
-            'showRenameFolder',
-            'showDeleteFolder',
-            'showUploadFile',
-            'showRenameFile',
-            'showDeleteFile',
-            'showUnzipFile',
-            'showCropImage',
-            'uploadRules',
-            'pinturaOptions',
+            'canUploadFile',
             'cropperOptions',
+            'filesystem',
+            'pinturaOptions',
+            'showCreateFolder',
+            'showCropImage',
+            'showDeleteFile',
+            'showDeleteFolder',
+            'showDownloadFile',
+            'showRenameFile',
+            'showRenameFolder',
+            'showUnzipFile',
+            'showUploadFile',
+            'uploadRules',
         ];
 
         foreach ($map as $attribute) {

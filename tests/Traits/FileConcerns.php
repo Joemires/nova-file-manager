@@ -8,6 +8,7 @@ use Illuminate\Foundation\Auth\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+
 use function Pest\Laravel\actingAs;
 
 trait FileConcerns
@@ -151,6 +152,33 @@ trait FileConcerns
                 ]);
 
             Storage::disk($this->disk)->assertExists($path);
+        });
+    }
+
+    public function performAuthorizedDownloadChecks(): void
+    {
+        test()->tap(function () {
+            Storage::disk($this->disk)->put($path = 'file.txt', $content = Str::random());
+
+            actingAs($this->user)
+                ->getJson(
+                    uri: route('nova-file-manager.files.download')."?disk={$this->disk}&path={$path}",
+                )
+                ->assertOk()
+                ->assertStreamedContent($content);
+        });
+    }
+
+    public function performUnauthorizedDownloadChecks(?string $message = null): void
+    {
+        test()->tap(function () {
+            Storage::disk($this->disk)->put($path = 'file.txt', $content = Str::random());
+
+            actingAs($this->user)
+                ->getJson(
+                    uri: route('nova-file-manager.files.download')."?disk={$this->disk}&path={$path}",
+                )
+                ->assertJsonValidationErrorFor('file');
         });
     }
 }

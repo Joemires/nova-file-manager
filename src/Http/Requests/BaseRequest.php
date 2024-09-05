@@ -157,6 +157,11 @@ class BaseRequest extends NovaRequest
         return $this->element()?->resolveCanUnzipFile($this) ?? true;
     }
 
+    public function canDownloadFile(): bool
+    {
+        return $this->element()?->resolveCanDownloadFile($this) ?? true;
+    }
+
     protected function failedAuthorization(): void
     {
         throw ValidationException::withMessages([
@@ -170,7 +175,7 @@ class BaseRequest extends NovaRequest
         return strtolower(str(static::class)->classBasename()->ucsplit()->get(1, ''));
     }
 
-    public function authorizationActionAttribute(string $class = null): string
+    public function authorizationActionAttribute(?string $class = null): string
     {
         return (string) str($class ?? static::class)->classBasename()->replace('Request', '')->snake(' ');
     }

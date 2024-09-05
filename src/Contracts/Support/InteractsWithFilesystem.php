@@ -67,6 +67,10 @@ interface InteractsWithFilesystem extends ResolvesUrl
 
     public function resolveCanUploadFile(NovaRequest $request): bool;
 
+    public function uploadReplaceExisting(Closure $callback): static;
+
+    public function resolveUploadReplaceExisting(NovaRequest $request): bool;
+
     public function canRenameFile(Closure $callback): static;
 
     public function resolveCanRenameFile(NovaRequest $request): bool;
@@ -78,6 +82,10 @@ interface InteractsWithFilesystem extends ResolvesUrl
     public function canUnzipFile(Closure $callback): static;
 
     public function resolveCanUnzipFile(NovaRequest $request): bool;
+
+    public function canDownloadFile(Closure $callback): static;
+
+    public function resolveCanDownloadFile(NovaRequest $request): bool;
 
     public function hasUploadValidator(): bool;
 
@@ -98,6 +106,10 @@ interface InteractsWithFilesystem extends ResolvesUrl
     public function pinturaOptions(array $options): static;
 
     public function cropperOptions(array $options): static;
+
+    public function pagination(Closure $callback): static;
+
+    public function resolvePagination(NovaRequest $request): array;
 
     public function options(): array;
 
